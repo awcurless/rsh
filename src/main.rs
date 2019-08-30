@@ -22,6 +22,18 @@ fn cd(args: SplitWhitespace) -> Option<Child> {
 }
 
 /**
+ * Returns the new prompt string.
+ * @param args The new prompt string.
+ * @return Optional wrapper string.
+ */
+fn set_prompt(args: &mut SplitWhitespace) -> Option<String> {
+    match args.next() {
+        Some(new_prompt) => Some(String::from(new_prompt)),
+        None => None,
+    }
+}
+
+/**
  * Executes a program with arguments.
  * @param piped True if this command is part of a piped invocation.
  * @param command The program to execute.
@@ -63,10 +75,11 @@ fn run_command(
  * Parse a single line of input. Split the line into a command and arguments.
  * Execute the command, either a build in command or a program on the machine
  * with the given arguments.
+ *
  * @return True to terminate.
  */
-fn process_line() -> bool {
-    print!("> ");
+fn process_line(prompt: &mut String) -> bool {
+    print!("{:}", prompt.to_string());
     stdout().flush().unwrap();
 
     let mut input = String::new();
@@ -88,6 +101,13 @@ fn process_line() -> bool {
             "exit" => {
                 return true;
             }
+            "setprompt" => match set_prompt(&mut args) {
+                Some(newprompt) => {
+                    prompt.clear();
+                    prompt.push_str(&newprompt);
+                }
+                None => (),
+            },
             cmd => {
                 previous = run_command(commands.peek().is_some(), cmd, &mut args, previous);
             }
@@ -104,8 +124,9 @@ fn process_line() -> bool {
  * Entry point. Continuously process lines of input.
  */
 fn main() {
+    let mut prompt = String::from("> ");
     loop {
-        if process_line() {
+        if process_line(&mut prompt) {
             // If we returned true, we should exit the infinite loop.
             return;
         }
