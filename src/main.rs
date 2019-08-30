@@ -1,17 +1,16 @@
+use std::collections::HashMap;
 use std::env;
 use std::io::{stdin, stdout, Write};
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
-use std::str::SplitWhitespace;
 
 /**
  * Change the working directory. See bash cd.
  * @param args The directory to navigate to.
  * @return The invoked process.
  */
-fn cd(args: SplitWhitespace) -> Option<Child> {
-    let dir = args.peekable().peek().map_or("/", |x| *x);
-    println!("folder {}", dir);
+fn cd(args: &Vec<&str>) -> Option<Child> {
+    let dir = args[0];
     let path = Path::new(dir);
 
     if let Err(e) = env::set_current_dir(&path) {
@@ -19,18 +18,6 @@ fn cd(args: SplitWhitespace) -> Option<Child> {
     }
 
     None
-}
-
-/**
- * Returns the new prompt string.
- * @param args The new prompt string.
- * @return Optional wrapper string.
- */
-fn set_prompt(args: &mut SplitWhitespace) -> Option<String> {
-    match args.next() {
-        Some(new_prompt) => Some(String::from(new_prompt)),
-        None => None,
-    }
 }
 
 /**
@@ -43,7 +30,7 @@ fn set_prompt(args: &mut SplitWhitespace) -> Option<String> {
 fn run_command(
     piped: bool,
     command: &str,
-    args: &mut SplitWhitespace,
+    args: &Vec<&str>,
     previous: Option<Child>,
 ) -> Option<Child> {
     let stdin = previous.map_or(Stdio::inherit(), |output: Child| {
@@ -65,9 +52,24 @@ fn run_command(
     match output {
         Ok(output) => Some(output),
         Err(e) => {
-            eprintln!("{}", e);
+            eprintln!("command: {} caused error {}", command, e);
             None
         }
+    }
+}
+
+fn parse_environment(args: &Vec<&str>, environ: &mut HashMap<String, String>) {
+    args.iter().for_each(|arg| {
+        if arg.contains("=") {
+            let pair: Vec<&str> = arg.split("=").collect();
+            environ.insert(pair[0].to_string(), pair[1].to_string());
+        }
+    });
+}
+
+fn env(environ: &HashMap<String, String>) {
+    for (key, value) in environ.into_iter() {
+        println!("{}={}", key, value);
     }
 }
 
@@ -78,7 +80,7 @@ fn run_command(
  *
  * @return True to terminate.
  */
-fn process_line(prompt: &mut String) -> bool {
+fn process_line(prompt: &mut String, environ: &mut HashMap<String, String>) -> bool {
     print!("{:}", prompt.to_string());
     stdout().flush().unwrap();
 
@@ -90,26 +92,30 @@ fn process_line(prompt: &mut String) -> bool {
     let mut previous: Option<Child> = None;
 
     while let Some(command) = commands.next() {
-        let mut args = command.trim().split_whitespace();
+        let mut args: Vec<&str> = command.trim().split_whitespace().collect();
 
-        let command = args.next().unwrap_or("");
+        let command = args[0];
+        args.remove(0);
 
         match command {
             "cd" => {
-                previous = cd(args);
+                previous = cd(&args);
             }
             "exit" => {
                 return true;
             }
-            "setprompt" => match set_prompt(&mut args) {
-                Some(newprompt) => {
-                    prompt.clear();
-                    prompt.push_str(&newprompt);
-                }
-                None => (),
-            },
+            "setprompt" => {
+                prompt.clear();
+                prompt.push_str(&args[0]);
+            }
+            "env" => {
+                env(environ);
+            }
+            "export" => {
+                parse_environment(&args, environ);
+            }
             cmd => {
-                previous = run_command(commands.peek().is_some(), cmd, &mut args, previous);
+                previous = run_command(commands.peek().is_some(), cmd, &args, previous);
             }
         };
     }
@@ -125,8 +131,10 @@ fn process_line(prompt: &mut String) -> bool {
  */
 fn main() {
     let mut prompt = String::from("> ");
+    let mut environ: HashMap<String, String> = HashMap::new();
+
     loop {
-        if process_line(&mut prompt) {
+        if process_line(&mut prompt, &mut environ) {
             // If we returned true, we should exit the infinite loop.
             return;
         }
