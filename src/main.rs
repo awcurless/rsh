@@ -16,33 +16,34 @@ fn cd(args: SplitWhitespace) -> Option<Child> {
     None
 }
 
-fn run_command(piped: bool, args: &mut SplitWhitespace, previous: Option<Child>) -> Option<Child> {
-    if let Some(command) = args.next() {
-        let stdin = previous.map_or(Stdio::inherit(), |output: Child| {
-            Stdio::from(output.stdout.unwrap())
-        });
+fn run_command(
+    piped: bool,
+    command: &str,
+    args: &mut SplitWhitespace,
+    previous: Option<Child>,
+) -> Option<Child> {
+    let stdin = previous.map_or(Stdio::inherit(), |output: Child| {
+        Stdio::from(output.stdout.unwrap())
+    });
 
-        let stdout = if piped {
-            Stdio::piped()
-        } else {
-            Stdio::inherit()
-        };
-
-        let output = Command::new(command)
-            .args(args)
-            .stdin(stdin)
-            .stdout(stdout)
-            .spawn();
-
-        match output {
-            Ok(output) => Some(output),
-            Err(e) => {
-                eprintln!("{}", e);
-                None
-            }
-        }
+    let stdout = if piped {
+        Stdio::piped()
     } else {
-        None
+        Stdio::inherit()
+    };
+
+    let output = Command::new(command)
+        .args(args)
+        .stdin(stdin)
+        .stdout(stdout)
+        .spawn();
+
+    match output {
+        Ok(output) => Some(output),
+        Err(e) => {
+            eprintln!("{}", e);
+            None
+        }
     }
 }
 
@@ -61,6 +62,8 @@ fn main() {
         while let Some(command) = commands.next() {
             let mut args = command.trim().split_whitespace();
 
+            let command = args.next().unwrap_or("");
+
             match command {
                 "cd" => {
                     previous = cd(args);
@@ -68,8 +71,8 @@ fn main() {
                 "exit" => {
                     return;
                 }
-                _ => {
-                    previous = run_command(commands.peek().is_some(), &mut args, previous);
+                cmd => {
+                    previous = run_command(commands.peek().is_some(), cmd, &mut args, previous);
                 }
             };
         }
