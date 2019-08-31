@@ -1,6 +1,7 @@
 pub mod env {
 
     use std::collections::HashMap;
+    use std::ops::Range;
     use std::process::Command;
     use std::str;
 
@@ -27,36 +28,33 @@ pub mod env {
 
     /**
      * Parse an arugment or command, resolving defined variable references.
-     * @param start Position of the start of the variable inside the argument.
-     * @param stop Position of the end of the variable inside the argument.
+     *
      * @param arg The argument or command to process.
-     * @return The variable to be looked up.
+     * @param start Position of the start of the variable inside the argument.
+     * @param ranges Index ranges in which variables appear.
      */
-    fn parse_variable(start: &mut usize, stop: &mut usize, arg: &String) -> String {
-        let mut var = String::new();
-        for i in 0..arg.len() {
-            let c = arg.chars().nth(i);
-            if c == Some('$') {
-                *start = i;
-            } else if *stop == 0 {
-                let c = c.unwrap();
-                if c == ' ' {
-                    *stop = i;
-                }
-                if c == '$' {
-                    // This is the case where there are 2 or more variables in the same argument.
-                    // This is not yet supported.
-                    *stop = i;
-                    break;
-                } else {
-                    var.push(c);
+    fn parse_variable(arg: &str, start: usize, ranges: &mut Vec<String>) {
+        let mut beginning = 0;
+        let mut stop = start;
+
+        for i in start..arg.len() {
+            let c = arg.chars().nth(i).unwrap();
+
+            if c == '$' && start == i {
+                beginning = i;
+            } else {
+                if c == ' ' || c == '\n' {
+                    stop = i;
+                } else if c == '$' {
+                    stop = i;
+                    parse_variable(arg, i, ranges);
                 }
             }
         }
-        if *stop == 0 {
-            *stop = arg.len();
+        if stop == start {
+            stop = arg.len();
         }
-        var
+        ranges.push(arg[beginning..stop].trim().to_string());
     }
 
     /**
@@ -66,26 +64,32 @@ pub mod env {
      * @param environ Hashmap containing environment.
      * @return Vector of fully-parsed arguments.
      */
-    pub fn resolve_variables(args: &Vec<&str>, environ: &HashMap<String, String>) -> Vec<String> {
+    pub fn resolve_variables(
+        args: &mut Vec<&str>,
+        environ: &HashMap<String, String>,
+    ) -> Vec<String> {
         let mut evaluated: Vec<String> = Vec::new();
         for arg in args {
-            let mut arg = arg.to_string();
             if arg.contains("$") {
-                let mut start = 0;
-                let mut end = 0;
+                let mut arg = arg.clone();
+                let mut ranges: Vec<String> = Vec::new();
+                parse_variable(&mut arg, 0, &mut ranges);
 
-                let var = parse_variable(&mut start, &mut end, &mut arg);
-                let key: Option<&String> = environ.get(&var);
+                ranges.reverse();
+                for range in ranges {
+                    let value: Option<&String> = environ.get(&range[1..]);
 
-                match key {
-                    Some(k) => {
-                        arg.replace_range(start..end, k.as_ref());
-                        evaluated.push(arg);
+                    match value {
+                        Some(v) => {
+                            let eval = String::from(arg.clone());
+                            let eval = eval.replace(&range, v.as_ref());
+                            evaluated.push(eval);
+                        }
+                        None => println!("Unknown variable: {:?}", &range),
                     }
-                    None => println!("Unknown variable: {}", var),
                 }
             } else {
-                evaluated.push(arg);
+                evaluated.push(String::from(arg.clone()));
             }
         }
         evaluated
