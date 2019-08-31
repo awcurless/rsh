@@ -1,4 +1,6 @@
 pub mod rsh {
+
+    use crate::env::env as rshell_env;
     use std::collections::HashMap;
     use std::env;
     use std::io::{stdin, stdout, Write};
@@ -19,33 +21,6 @@ pub mod rsh {
         }
 
         None
-    }
-
-    fn resolve_variables(args: &mut Vec<&str>, environ: &HashMap<String, String>) {
-        for arg in args {
-            let mut arg = String::from(arg.clone());
-            if arg.contains("$") {
-                println!("Detected variable, started parsing");
-                let mut start = 0;
-                let mut end = 0;
-                let mut var = String::new();
-                for i in 0..arg.len() {
-                    let c = arg.chars().nth(i);
-                    if c == Some('$') {
-                        start = i;
-                    } else if start > 0 && end == 0 {
-                        if c != Some(' ') {
-                            if c.is_some() {
-                                var.push(c.unwrap());
-                            }
-                        } else {
-                            end = i;
-                        }
-                    }
-                }
-                arg.replace_range(start..end, environ.get(&var).unwrap().as_ref());
-            }
-        }
     }
 
     /**
@@ -72,10 +47,10 @@ pub mod rsh {
             Stdio::inherit()
         };
 
-        resolve_variables(args, environ);
+        let arguments = rshell_env::resolve_variables(args, environ);
 
         let output = Command::new(&command)
-            .args(args)
+            .args(arguments)
             .stdin(stdin)
             .stdout(stdout)
             .spawn();
@@ -86,21 +61,6 @@ pub mod rsh {
                 eprintln!("command: {} caused error {}", command, e);
                 None
             }
-        }
-    }
-
-    fn parse_environment(args: &Vec<&str>, environ: &mut HashMap<String, String>) {
-        args.iter().for_each(|arg| {
-            if arg.contains("=") {
-                let pair: Vec<&str> = arg.split("=").collect();
-                environ.insert(pair[0].to_string(), pair[1].to_string());
-            }
-        });
-    }
-
-    fn env(environ: &HashMap<String, String>) {
-        for (key, value) in environ.into_iter() {
-            println!("{}={}", key, value);
         }
     }
 
@@ -125,6 +85,10 @@ pub mod rsh {
         while let Some(command) = commands.next() {
             let mut args: Vec<&str> = command.trim().split_whitespace().collect();
 
+            if command.len() == 0 {
+                break;
+            }
+
             let command = args[0];
             args.remove(0);
 
@@ -140,10 +104,10 @@ pub mod rsh {
                     prompt.push_str(&args[0]);
                 }
                 "env" => {
-                    env(environ);
+                    rshell_env::env(environ);
                 }
                 "export" => {
-                    parse_environment(&args, environ);
+                    rshell_env::parse_environment(&args, environ);
                 }
                 cmd => {
                     previous =
