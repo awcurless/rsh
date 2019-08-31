@@ -1,7 +1,6 @@
 pub mod env {
 
     use std::collections::HashMap;
-    use std::ops::Range;
     use std::process::Command;
     use std::str;
 
