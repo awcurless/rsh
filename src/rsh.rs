@@ -1,11 +1,12 @@
 pub mod rsh {
 
+    use crate::context::context::Context;
     use crate::env::env as rshell_env;
     use std::collections::HashMap;
     use std::env;
     use std::io::{stdin, stdout, Write};
     use std::path::Path;
-    use std::process::{Child, Command, Stdio};
+    use std::process::{Child, Command, ExitStatus, Stdio};
 
     /**
      * Change the working directory. See bash cd.
@@ -71,7 +72,7 @@ pub mod rsh {
      *
      * @return True to terminate.
      */
-    pub fn process_line(prompt: &mut String, environ: &mut HashMap<String, String>) -> bool {
+    pub fn process_line(prompt: &mut String, ctx: &mut Context) -> bool {
         print!("{:}", prompt.to_string());
         stdout().flush().unwrap();
 
@@ -79,7 +80,13 @@ pub mod rsh {
 
         stdin().read_line(&mut input).unwrap();
 
-        let mut commands = input.trim().split(" | ").peekable();
+        let background = input.chars().nth(input.len() - 2).unwrap() == '&';
+        let fixed = match background {
+            true => String::from(&input[0..input.len() - 3]),
+            false => input,
+        };
+
+        let mut commands = fixed.trim().split(" | ").peekable();
         let mut previous: Option<Child> = None;
 
         while let Some(command) = commands.next() {
@@ -104,21 +111,109 @@ pub mod rsh {
                     prompt.push_str(&args[0]);
                 }
                 "env" => {
-                    rshell_env::env(environ);
+                    rshell_env::env(&ctx.env);
                 }
                 "export" => {
-                    rshell_env::parse_environment(&args, environ);
+                    rshell_env::parse_environment(&args, &mut ctx.env);
+                }
+                "jobs" => {
+                    jobs(&ctx.jobs);
                 }
                 cmd => {
-                    previous =
-                        run_command(commands.peek().is_some(), cmd, &mut args, environ, previous);
+                    previous = run_command(
+                        commands.peek().is_some(),
+                        cmd,
+                        &mut args,
+                        &ctx.env,
+                        previous,
+                    );
                 }
             };
         }
 
         if let Some(mut last) = previous {
-            last.wait().unwrap();
+            // Handle synchronous and asynchronous jobs.
+            if !background {
+                last.wait().unwrap();
+            } else {
+                match last.try_wait() {
+                    Ok(Some(_status)) => (),
+                    Ok(None) => {
+                        // Still running so we need to store it.
+                        println!("[{}]", &last.id());
+                        ctx.jobs.push(last);
+                    }
+                    Err(e) => eprintln!("Error collecting background process state {:?}", e),
+                };
+            }
         }
+
+        check_running_jobs(&mut ctx.jobs);
+
         return false;
+    }
+
+    /**
+     * List the currently active jobs to stdout.
+     *
+     * Format:
+     * [<id>] <pid>
+     *
+     * where <id> is a shell assigned index of the job and <pid> is the OS assigned
+     * process ID.
+     *
+     * @param jobs List of active jobs maintained in Context.
+     */
+    fn jobs(jobs: &Vec<Child>) {
+        let mut idx: usize = 1;
+        jobs.iter().for_each(|j| {
+            println!("[{}] {}", idx, j.id());
+            idx += 1;
+        });
+    }
+
+    /**
+     * Loop the jobs listing and check to see if each job is still in process.
+     * Delete finished jobs from the list.
+     * @param jobs Background job listing maintained in Context.
+     */
+    fn check_running_jobs(jobs: &mut Vec<Child>) {
+        let mut completed_pids: Vec<u32> = Vec::new();
+
+        let mut idx: usize = 1;
+        for job in &mut *jobs {
+            match check_process(job) {
+                Some(_status) => {
+                    match job.stdout.as_ref() {
+                        Some(output) => print!("{:?}", output),
+                        None => (),
+                    }
+                    println!("[{}] {} done", idx, job.id());
+                    completed_pids.push(job.id());
+                }
+                None => (),
+            }
+            idx += 1;
+        }
+
+        completed_pids
+            .iter()
+            .for_each(|pid| jobs.retain(|j| j.id() != *pid));
+    }
+
+    /**
+     * Checks the state of a given background process.
+     * @param job The process.
+     * @return The ExitStatus if a process is finished, otherwise None.
+     */
+    fn check_process(job: &mut Child) -> Option<ExitStatus> {
+        match job.try_wait() {
+            Ok(Some(status)) => Some(status),
+            Ok(None) => None,
+            Err(e) => {
+                eprintln!("Error collecting background process state {:?}", e);
+                None
+            }
+        }
     }
 }

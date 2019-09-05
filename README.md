@@ -8,3 +8,4 @@ Supports:
 * Changing the working directory
 * Executing arbitrary programs on the user's machine
 * Piping via `|`
+* Background jobs via `&`. List running background jobs with the `jobs` builtin.

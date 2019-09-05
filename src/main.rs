@@ -1,9 +1,10 @@
+mod context;
 mod env;
 mod rsh;
 
-use std::collections::HashMap;
 use std::string::String;
 
+use crate::context::context as rshell_ctx;
 use crate::env::env as rshell_env;
 use crate::rsh::rsh as rshell;
 
@@ -18,12 +19,13 @@ fn main() {
     simple_signal::set_handler(&[Signal::Int, Signal::Term], |_signals| ());
 
     let mut prompt = String::from("> ");
-    let mut environ: HashMap<String, String> = HashMap::new();
 
-    rshell_env::init_environment(&mut environ);
+    let mut ctx: rshell_ctx::Context = rshell_ctx::Context::new();
+
+    rshell_env::init_environment(&mut ctx.env);
 
     loop {
-        if rshell::process_line(&mut prompt, &mut environ) {
+        if rshell::process_line(&mut prompt, &mut ctx) {
             // If we returned true, exit the infinite loop.
             return;
         }
