@@ -5,6 +5,8 @@ pub mod context {
     use std::collections::HashMap;
     use std::process::Child;
 
+    use rustyline::Editor;
+
     /**
      * Global context for the currently active shell instance.
      */
@@ -12,6 +14,7 @@ pub mod context {
         pub env: HashMap<String, String>,
         pub alias: HashMap<String, String>,
         pub jobs: Vec<Child>,
+        pub rl: Editor<()>,
     }
 
     impl Context {
@@ -23,6 +26,7 @@ pub mod context {
                 env: HashMap::new(),
                 alias: HashMap::new(),
                 jobs: Vec::new(),
+                rl: Editor::<()>::new(),
             }
         }
     }

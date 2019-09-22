@@ -4,7 +4,6 @@ pub mod rsh {
     use crate::env::env as rshell_env;
     use std::collections::HashMap;
     use std::env;
-    use std::io::{stdin, stdout, Write};
     use std::path::Path;
     use std::process::{Child, Command, ExitStatus, Stdio};
 
@@ -73,13 +72,12 @@ pub mod rsh {
      * @return True to terminate.
      */
     pub fn process_line(prompt: &mut String, ctx: &mut Context) -> bool {
-        print!("{:}", prompt.to_string());
-        stdout().flush().unwrap();
+        let input = match ctx.rl.readline(prompt) {
+            Ok(line) => line,
+            Err(_) => String::from(""),
+        };
 
-        let mut input = String::new();
-
-        stdin().read_line(&mut input).unwrap();
-
+        ctx.rl.add_history_entry(input.as_str());
         let background = input.chars().nth(input.len() - 2).unwrap() == '&';
         let fixed = match background {
             true => String::from(&input[0..input.len() - 3]),
@@ -104,6 +102,7 @@ pub mod rsh {
                     previous = cd(&args);
                 }
                 "exit" => {
+                    ctx.rl.save_history("rsh_history").unwrap();
                     return true;
                 }
                 "setprompt" => {
