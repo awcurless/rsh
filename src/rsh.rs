@@ -78,11 +78,18 @@ pub mod rsh {
         };
 
         ctx.rl.add_history_entry(input.as_str());
-        let background = input.chars().nth(input.len() - 2).unwrap() == '&';
-        let fixed = match background {
-            true => String::from(&input[0..input.len() - 3]),
-            false => input,
-        };
+        let fixed;
+        let background;
+        if input.contains('&') {
+            background = input.chars().nth(input.len() - 2).unwrap() == '&';
+            fixed = match background {
+                true => String::from(&input[0..input.len() - 3]),
+                false => input,
+            };
+        } else {
+            fixed = input;
+            background = false;
+        }
 
         let mut commands = fixed.trim().split(" | ").peekable();
         let mut previous: Option<Child> = None;
